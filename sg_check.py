@@ -79,8 +79,7 @@ if __name__ == "__main__":
     # create a new report file
     with open(fileName, "w") as file:
             file.write("Security Group Usage Report\n")
-            file.write("Profile: {}.format(profile)\n")
-            file.write("Region: {}.format(region)\n")
+            file.write("Region: {}\n".format(region))
 
     # security groups to look up [list or str]
     # e.g. "['sg-089c5df23b33ac8b5', 'sg-05816c13731074c0d']"
