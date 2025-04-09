@@ -5,9 +5,9 @@ import boto3
 def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles):
     # Get the name of the role, its creation date, and the date that it was last used
     roleName = role["RoleName"]
-    createDate = role["CreateDate"]
+    createDate = role["CreateDate"].strftime('%Y-%m-%d %H:%M:%S %Z')
     try:
-        lastUseDate = iam.get_role(RoleName=roleName)["Role"]["RoleLastUsed"]["LastUsedDate"]
+        lastUseDate = iam.get_role(RoleName=roleName)["Role"]["RoleLastUsed"]["LastUsedDate"].strftime('%Y-%m-%d %H:%M:%S %Z')
     # If the role has never been used then the returned role will not have this value
     except:
         lastUseDate = "No activity"
@@ -21,7 +21,7 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
 def main(iam, sts, org):
     # Get current account ID and account IDs within the organization
     myAccount = sts.get_caller_identity().get('Account')
-    orgAccounts = [account["Id"] for account in org.list_accounts()["Accounts"]]
+    orgAccounts = ['026090555438', '225989360746', '522814728063', '908027388817']#[account["Id"] for account in org.list_accounts()["Accounts"]]
     # Create a new report file
     with open(fileName, "w") as file:
         file.write("Role Cross-Account Access Report\n")
@@ -55,12 +55,18 @@ def main(iam, sts, org):
     #print(intTrustRoles)
     # Write the results to the file
     with open(fileName, "a") as file:
-        file.write("Roles with External Cross-Account Access\n")
-        for key, value in extRoles.items():
-            file.write("{}: {}".format(key, value))
-        file.write("Roles with Internal Cross-Account Access\n")
-        for key, value in intRoles.items():
-            file.write("{}: {}".format(key, value))
+        file.write("\nRoles with External Cross-Account Access:\n")
+        if not extRoles:
+            file.write("(None)")
+        else:
+            for key, value in extRoles.items():
+                file.write("Role Name: {}\n  Creation Date: {}\n  Last Used: {}\n".format(key, value["Creation Date"], value["Last Used"]))
+        file.write("\n\nRoles with Internal Cross-Account Access:\n")
+        if not intRoles:
+            file.write("(None)")
+        else:
+            for key, value in intRoles.items():
+                file.write("Role Name: {}\n  Creation Date: {}\n  Last Used: {}\n".format(key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
     # verify that all arguments are used
