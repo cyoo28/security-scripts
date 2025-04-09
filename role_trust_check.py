@@ -21,7 +21,7 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
 def main(iam, sts, org):
     # Get current account ID and account IDs within the organization
     myAccount = sts.get_caller_identity().get('Account')
-    orgAccounts = ['026090555438', '225989360746', '522814728063', '908027388817']#[account["Id"] for account in org.list_accounts()["Accounts"]]
+    orgAccounts = [account["Id"] for account in org.list_accounts()["Accounts"]]
     # Create a new report file
     with open(fileName, "w") as file:
         file.write("Role Cross-Account Access Report\n")
