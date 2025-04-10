@@ -19,19 +19,26 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
 
 
 def main(iam, sts, org):
+    # Set up the paginators
+    iamPaginator = iam.get_paginator('list_roles')
+    orgPaginator = org.get_paginator('list_accounts')
     # Get current account ID and account IDs within the organization
     myAccount = sts.get_caller_identity().get('Account')
-    orgAccounts = [account["Id"] for account in org.list_accounts()["Accounts"]]
+    orgAccounts = []
+    # Iterate through the paginator
+    orgIterator = orgPaginator.paginate()
+    for page in orgIterator:
+        for account in page["Accounts"]:
+            orgAccounts.append(account["Id"])
     # Create a new report file
     with open(fileName, "w") as file:
-        file.write("Role Cross-Account Access Report\n")
-    # Set up the paginator and dictionaries that contain the roles with cross-account access
-    paginator = iam.get_paginator('list_roles')
+        file.write("Type, Role Name, Creation Date, Last Used\n")
+    # Set up the dictionaries that contain the roles with cross-account access
     extRoles = {} # for accounts external to the organization
     intRoles = {} # for accounts internal to the organization
     # Iterate through the paginator
-    page_iterator = paginator.paginate()
-    for page in page_iterator:
+    iamIterator = iamPaginator.paginate()
+    for page in iamIterator:
         # Iterate through each role
         for role in page["Roles"]:
             # Iterate through each assume role policy statement (a role could have more than one)
@@ -44,49 +51,44 @@ def main(iam, sts, org):
                     principals = statement.get("Principal",{})
                     if "AWS" in principals:
                         awsPrincipals = principals["AWS"]
-                        # If it is a single principal it may be specified as a str
                         if isinstance(awsPrincipals, str):
-                            getRoleInfo(iam, awsPrincipals, role, myAccount, orgAccounts, extRoles, intRoles)
-                        # If it are multiple principal it may be specified as a dict
-                        elif isinstance(awsPrincipals, list):
-                            for awsPrincipal in awsPrincipals:
-                                getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles)
-    #print(extTrustRoles)
-    #print(intTrustRoles)
+                            awsPrincipals = [awsPrincipals]
+                        for awsPrincipal in awsPrincipals:
+                            getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles)
     # Write the results to the file
     with open(fileName, "a") as file:
-        file.write("\nRoles with External Cross-Account Access:\n")
         if not extRoles:
-            file.write("(None)")
+            print("No External Roles (that allow access to accounts outside the org)")
         else:
             for key, value in extRoles.items():
-                file.write("Role Name: {}\n  Creation Date: {}\n  Last Used: {}\n".format(key, value["Creation Date"], value["Last Used"]))
-        file.write("\n\nRoles with Internal Cross-Account Access:\n")
+                file.write("{},{},{},{}\n".format("External", key, value["Creation Date"], value["Last Used"]))
         if not intRoles:
-            file.write("(None)")
+            print("No Internal Roles (that allow access to accounts inside the org)")
         else:
             for key, value in intRoles.items():
-                file.write("Role Name: {}\n  Creation Date: {}\n  Last Used: {}\n".format(key, value["Creation Date"], value["Last Used"]))
+                file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
     # verify that all arguments are used
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         print('Not enough arguments have been passed.')
-        print("arg: 'profile', 'reportName' (optional)")
+        print("arg: 'account-profile', 'org-admin-profile', 'reportName' (optional)")
         sys.exit(1)
-    if len(sys.argv) > 2:
-        fileName = sys.argv[2]
+    if len(sys.argv) > 3:
+        fileName = sys.argv[3]
     else:
-        fileName = "role-trust-report.txt"
+        fileName = "role-cross-account-report.csv"
     # config profile [str]
     # e.g. "symphony-c9dev"
-    profile = sys.argv[1]
+    accProfile = sys.argv[1]
+    orgProfile = sys.argv[2]
     # check that the profile is valid by creating a boto3 session
     try:
-        session = boto3.Session(profile_name=profile)
-        iam = session.client("iam")
-        sts = session.client("sts")
-        org = session.client('organizations')
+        accSession = boto3.Session(profile_name=accProfile)
+        orgSession = boto3.Session(profile_name=orgProfile)
+        iam = accSession.client("iam")
+        sts = accSession.client("sts")
+        org = orgSession.client('organizations')
     except:
         print("Unable to create session.\nCheck the profile.")
         print("arg: 'profile', 'reportName' (optional)")
