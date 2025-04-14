@@ -74,7 +74,7 @@ def main(iam, sts, org):
             for key, value in intRoles.items():
                 file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
         if unknownRoles:
-            for key, value in intRoles.items():
+            for key, value in unknownRoles.items():
                 file.write("{},{},{},{}\n".format("Unknown", key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
