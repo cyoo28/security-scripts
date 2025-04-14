@@ -2,7 +2,7 @@
 import sys
 import boto3
 
-def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles):
+def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, otherRoles):
     # Get the name of the role, its creation date, and the date that it was last used
     roleName = role["RoleName"]
     createDate = role["CreateDate"].strftime('%Y-%m-%d %H:%M:%S %Z')
@@ -16,7 +16,8 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
         extRoles[roleName] = {"Creation Date":createDate,"Last Used":lastUseDate}
     elif awsPrincipal.split(":")[4] != myAccount:
         intRoles[roleName] = {"Creation Date":createDate,"Last Used":lastUseDate}
-
+    else:
+        otherRoles[roleName] = {"Creation Date":createDate,"Last Used":lastUseDate}
 
 def main(iam, sts, org):
     # Set up the paginators
@@ -34,8 +35,10 @@ def main(iam, sts, org):
     with open(fileName, "w") as file:
         file.write("Type, Role Name, Creation Date, Last Used\n")
     # Set up the dictionaries that contain the roles with cross-account access
-    extRoles = {} # for accounts external to the organization
-    intRoles = {} # for accounts internal to the organization
+    extRoles = {} # for roles with trust to accounts external to the organization
+    intRoles = {} # for roles with trust to accounts internal to the organization
+    otherRoles = {} # for roles with external trust to an entity that no longer exists
+
     # Iterate through the paginator
     iamIterator = iamPaginator.paginate()
     for page in iamIterator:
@@ -44,7 +47,7 @@ def main(iam, sts, org):
             # Iterate through each assume role policy statement (a role could have more than one)
             for statement in role["AssumeRolePolicyDocument"]["Statement"]:
                 # Stop iterating through the statements if it has already been confirmed that this role has cross-account access
-                if role["RoleName"] in extRoles or role["RoleName"] in intRoles:
+                if role["RoleName"] in extRoles or role["RoleName"] in intRoles or role["RoleName"] in otherRoles:
                     break
                 else:
                     # Check that the statement is for an AWS principal
@@ -54,7 +57,7 @@ def main(iam, sts, org):
                         if isinstance(awsPrincipals, str):
                             awsPrincipals = [awsPrincipals]
                         for awsPrincipal in awsPrincipals:
-                            getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles)
+                            getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, otherRoles)
     # Write the results to the file
     with open(fileName, "a") as file:
         if not extRoles:
@@ -67,6 +70,9 @@ def main(iam, sts, org):
         else:
             for key, value in intRoles.items():
                 file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
+        if otherRoles:
+            for key, value in intRoles.items():
+                file.write("{},{},{},{}\n".format("Other", key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
     # verify that all arguments are used
