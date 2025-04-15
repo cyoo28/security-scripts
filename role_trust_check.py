@@ -25,9 +25,9 @@ def main():
     # Create an ArgumentParser object
     parser = argparse.ArgumentParser(description="Use this script to find roles that allow cross-account access")
     # Create arguments
-    parser.add_argument("accProf", metavar="accProfile", type=str, help="The account that you would like to search within")
-    parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account with access to Organizations")
-    parser.add_argument("--fileName", dest="fileName", default="role-cross-account-report.csv", help="Name of your file (\"role-cross-account-report.csv\" if not specified)")
+    parser.add_argument("accProf", metavar="accProfile", type=str, help="The account profile that you would like to search within")
+    parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account profile with access to Organizations")
+    parser.add_argument("--fileName", dest="fileName", type=str, default="role-cross-account-report.csv", help="Name of your file (\"role-cross-account-report.csv\" if not specified)")
     parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
     # Parse the command-line arguments
     args = parser.parse_args(sys.argv[1:])
@@ -39,9 +39,9 @@ def main():
         sts = accSession.client("sts")
         org = orgSession.client('organizations')
     except:
-        print("Unable to create session.\nCheck the profile.")
+        if args.debug:
+            print("Unable to create session.\nCheck the profile.")
         sys.exit(1)
-
     # Set up the paginators
     iamPaginator = iam.get_paginator('list_roles')
     orgPaginator = org.get_paginator('list_accounts')
@@ -60,7 +60,6 @@ def main():
     extRoles = {} # for roles with trust to accounts external to the organization
     intRoles = {} # for roles with trust to accounts internal to the organization
     unknownRoles = {} # for roles with trust to an entity that may no longer exist
-
     # Iterate through the paginator
     iamIterator = iamPaginator.paginate()
     for page in iamIterator:
@@ -86,17 +85,17 @@ def main():
                             getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, unknownRoles)
     # Write the results to the file
     with open(args.fileName, "a") as file:
-        if not extRoles:
+        if args.debug and not extRoles:
             print("No External Roles (that allow access to accounts outside the org)")
         else:
             for key, value in extRoles.items():
                 file.write("{},{},{},{}\n".format("External", key, value["Creation Date"], value["Last Used"]))
-        if not intRoles:
+        if args.debug and not intRoles:
             print("No Internal Roles (that allow access to accounts inside the org)")
         else:
             for key, value in intRoles.items():
                 file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
-        if unknownRoles:
+        if args.debug and unknownRoles:
             for key, value in unknownRoles.items():
                 file.write("{},{},{},{}\n".format("Unknown", key, value["Creation Date"], value["Last Used"]))
 
