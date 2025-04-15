@@ -2,104 +2,78 @@
 import sys
 import ast
 import boto3
+import argparse
 
-def checkSgUsage(client, checkSgs):
-    # list all network interfaces
-    paginator = client.get_paginator('describe_network_interfaces')
+def checkSgUsage(ec2, checkSGs):
+    # List all network interfaces
+    paginator = ec2.get_paginator('describe_network_interfaces')
     page_iterator = paginator.paginate()
-    # look at the security groups that are being used with the network interfaces
-    usedSgs = set()
+    # Look at the security groups that are being used with the network interfaces
+    usedSGs = set()
     for enis in page_iterator:
         for eni in enis["NetworkInterfaces"]:
             for group in eni["Groups"]:
-                # if the security group is in the list of groups you're looking for,
-                if group["GroupId"] in checkSgs:
-                    # then add it to the list of used security groups
-                    usedSgs.add(group["GroupId"])
-    unusedSgs = list(set(checkSgs).difference(set(usedSgs)))
-    # return the security groups that are being used
-    return usedSgs, unusedSgs
+                # If the security group is in the list of groups you're looking for,
+                if group["GroupId"] in checkSGs:
+                    # Then add it to the list of used security groups
+                    usedSGs.add(group["GroupId"])
+    unusedSGs = list(set(checkSGs).difference(set(usedSGs)))
+    # Return the security groups that are being used
+    return usedSGs, unusedSGs
 
-def main(client, checkSgs):
-    # return security groups that are in use
-    usedSgs, unusedSgs = checkSgUsage(client, checkSgs)
-    if usedSgs:
-        # Write content to the file
-        with open(fileName, "a") as file:
-            file.write("\nThe following security groups are not in use:\n")
-            file.write("{}\n".format(usedSgs))
-            file.write("\nThe following security groups are in use:\n")
-            file.write("{}\n".format(unusedSgs))
-        print("\nThe following security groups are in use:")
-        print("  {}".format(usedSgs))
-        print("\nThe following security groups are not in use:")
-        print("  {}".format(unusedSgs))
-    else:
-        # Write content to the file
-        with open(fileName, "a") as file:
-            file.write("\nThe following security groups are not in use:\n")
-            file.write("{}\n".format(unusedSgs))
-        print("\nNone of the security groups are in use")
-
-if __name__ == "__main__":
-    # verify that all arguments are used
-    if len(sys.argv) < 4:
-        print('Not enough arguments have been passed.')
-        print("arg: 'profile', 'region', ['sg-1', 'sg-2', ...], 'reportName' (optional)")
-        sys.exit(1)
-    if len(sys.argv) > 4:
-        fileName = sys.argv[4]
-    else:
-        fileName = "sg-report.txt"
-
-    # config profile [str]
-    # e.g. "symphony-c9dev"
-    profile = sys.argv[1]
-    # check that the profile is valid by creating a boto3 session
+def main():
+    # Create an ArgumentParser object
+    parser = argparse.ArgumentParser(description="Use this script to check whether or not security groups are in use")
+    # Create arguments
+    parser.add_argument("profile", metavar="profile", type=str, help="The account profile that you would like to search within")
+    parser.add_argument("region", metavar="region", type=str, help="The region that you would like to search within")
+    parser.add_argument("checkSGs", metavar="checkSGs", nargs="+", type=str, help="The security groups you would like to search for")
+    parser.add_argument("--fileName", dest="fileName", type=str, default="sg-usage-report.csv", help="Name of your file (\"sg-usage-report.csv\" if not specified)")
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
+    # Parse the command-line arguments
+    args = parser.parse_args(sys.argv[1:])
+    # Create the session
     try:
-        session = boto3.Session(profile_name=profile)
+        session = boto3.Session(profile_name=args.profile, region_name=args.region)
+        ec2 = session.client("ec2")
     except:
-        print("Unable to create session.\nCheck the profile.")
-        print("arg: 'profile', 'region', ['sg-1', 'sg-2', ...], 'reportName' (optional)")
+        if args.debug:
+            print("Unable to create session.\nCheck the profile/region.")
         sys.exit(1)
-    # region to search in [str]
-    # e.g. "us-east-1"
-    region = sys.argv[2]
-    # check that the region is valid
-    validRegions = session.get_available_regions('ec2')
-    if region not in validRegions:
-        print("Not a valid region.\nCheck that the region is spelled correctly.")
-        print("arg: 'profile', 'region', ['sg-1', 'sg-2', ...], 'reportName' (optional)")
-        sys.exit(1)
-
-    # recreate the session specifying the valid region
-    session = boto3.Session(profile_name=profile, region_name=region)
-    client = session.client("ec2")
-
-    # create a new report file
-    with open(fileName, "w") as file:
-            file.write("Security Group Usage Report\n")
-            file.write("Region: {}\n".format(region))
-
-    # security groups to look up [list or str]
-    # e.g. "['sg-089c5df23b33ac8b5', 'sg-05816c13731074c0d']"
-    checkSgs = ast.literal_eval(sys.argv[3])
-    # check to see if the security groups exist
-    paginator = client.get_paginator('describe_security_groups')
+    # Create a new report file
+    with open(args.fileName, "w") as file:
+            file.write("Security Group Name, Status\n")
+    # Set up the paginator
+    paginator = ec2.get_paginator('describe_security_groups')
+    # Check which security groups exist and which do not
     page_iterator = paginator.paginate()
-    existingSgs = set()
+    allSGs = set()
     for page in page_iterator:
         for sg in page["SecurityGroups"]:
-            existingSgs.add(sg["GroupId"])
-    nonExistSgs = list(set(checkSgs).difference(existingSgs))
-    if nonExistSgs:
-        # Write content to the file
-        with open(fileName, "a") as file:
-            file.write("The following security groups do not exist:\n")
-            file.write("{}\n".format(nonExistSgs))
-        # Display which security groups do not exist
-        print("\nThe following security groups do not exist:")
-        print("  {}".format(nonExistSgs))
-        print("Check that they are spelled correctly and that you are looking in the correct account or region.")
-    # if all checks are passed, run the rest of the code
-    main(client, checkSgs)
+            allSGs.add(sg["GroupId"])
+    nonExistSGs = list(set(args.checkSGs).difference(allSGs))
+    existSGs = list(set(args.checkSGs).intersection(allSGs))
+    # Check whether or not existing security groups are in use
+    usedSGs, unusedSGs = checkSgUsage(ec2, existSGs)
+    # Write the results to the file
+    with open(args.fileName, "a") as file:
+        if args.debug and not usedSGs and not unusedSGs and nonExistSGs:
+            print("None of the security groups exist (check the names of the security groups and if you're looking in the correct account/region)")
+            sys.exit(1)
+        else:
+            if args.debug and not usedSGs:
+                print("None of the security groups are in use")
+            else:
+                for usedSG in usedSGs:
+                    file.write("{},{}\n".format(usedSG, "In Use"))
+            if args.debug and not unusedSGs:
+                print("All of the security groups are in use")
+            else:
+                for unusedSG in unusedSGs:
+                    file.write("{},{}\n".format(unusedSG, "Not In Use"))
+            if nonExistSGs:
+                for nonExistSG in nonExistSGs:
+                    file.write("{},{}\n".format(nonExistSG, "Does Not Exist"))
+
+if __name__ == "__main__":
+    main()
