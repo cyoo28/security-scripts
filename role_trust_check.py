@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 import boto3
+import argparse
 
 def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, unknownRoles):
     # Get the name of the role, its creation date, and the date that it was last used
@@ -20,7 +21,27 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
     else:
         unknownRoles[roleName] = {"Creation Date":createDate,"Last Used":lastUseDate}
 
-def main(iam, sts, org):
+def main():
+    # Create an ArgumentParser object
+    parser = argparse.ArgumentParser(description="Use this script to find roles that allow cross-account access")
+    # Create arguments
+    parser.add_argument("accProf", metavar="accProfile", type=str, help="The account that you would like to search within")
+    parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account with access to Organizations")
+    parser.add_argument("--fileName", dest="fileName", default="role-cross-account-report.csv", help="Name of your file (\"role-cross-account-report.csv\" if not specified)")
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
+    # Parse the command-line arguments
+    args = parser.parse_args(sys.argv[1:])
+    # check that the profile is valid by creating a boto3 session
+    try:
+        accSession = boto3.Session(profile_name=args.accProf)
+        orgSession = boto3.Session(profile_name=args.orgProf)
+        iam = accSession.client("iam")
+        sts = accSession.client("sts")
+        org = orgSession.client('organizations')
+    except:
+        print("Unable to create session.\nCheck the profile.")
+        sys.exit(1)
+
     # Set up the paginators
     iamPaginator = iam.get_paginator('list_roles')
     orgPaginator = org.get_paginator('list_accounts')
@@ -33,7 +54,7 @@ def main(iam, sts, org):
         for account in page["Accounts"]:
             orgAccounts.append(account["Id"])
     # Create a new report file
-    with open(fileName, "w") as file:
+    with open(args.fileName, "w") as file:
         file.write("Type, Role Name, Creation Date, Last Used\n")
     # Set up the dictionaries that contain the roles with cross-account access
     extRoles = {} # for roles with trust to accounts external to the organization
@@ -45,8 +66,10 @@ def main(iam, sts, org):
     for page in iamIterator:
         # Iterate through each role
         for role in page["Roles"]:
-            # Print role name
-            #print(role["RoleName"])
+            # if debug mode is on
+            if args.debug:
+                # Print role name
+                print(role["RoleName"])
             # Iterate through each assume role policy statement (a role could have more than one)
             for statement in role["AssumeRolePolicyDocument"]["Statement"]:
                 # Stop iterating through the statements if it has already been confirmed that this role has cross-account access
@@ -62,7 +85,7 @@ def main(iam, sts, org):
                         for awsPrincipal in awsPrincipals:
                             getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, unknownRoles)
     # Write the results to the file
-    with open(fileName, "a") as file:
+    with open(args.fileName, "a") as file:
         if not extRoles:
             print("No External Roles (that allow access to accounts outside the org)")
         else:
@@ -78,28 +101,4 @@ def main(iam, sts, org):
                 file.write("{},{},{},{}\n".format("Unknown", key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
-    # verify that all arguments are used
-    if len(sys.argv) < 3:
-        print('Not enough arguments have been passed.')
-        print("arg: 'account-profile', 'org-admin-profile', 'reportName' (optional)")
-        sys.exit(1)
-    if len(sys.argv) > 3:
-        fileName = sys.argv[3]
-    else:
-        fileName = "role-cross-account-report.csv"
-    # config profile [str]
-    # e.g. "symphony-c9dev"
-    accProfile = sys.argv[1]
-    orgProfile = sys.argv[2]
-    # check that the profile is valid by creating a boto3 session
-    try:
-        accSession = boto3.Session(profile_name=accProfile)
-        orgSession = boto3.Session(profile_name=orgProfile)
-        iam = accSession.client("iam")
-        sts = accSession.client("sts")
-        org = orgSession.client('organizations')
-    except:
-        print("Unable to create session.\nCheck the profile.")
-        print("arg: 'profile', 'reportName' (optional)")
-        sys.exit(1)
-    main(iam, sts, org)
+    main()
