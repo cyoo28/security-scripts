@@ -27,7 +27,7 @@ def main():
     # Create arguments
     parser.add_argument("accProf", metavar="accProfile", type=str, help="The account profile that you would like to search within")
     parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account profile with access to Organizations")
-    parser.add_argument("--fileName", dest="fileName", type=str, default="role-cross-account-report.csv", help="Name of your file (\"role-cross-account-report.csv\" if not specified)")
+    parser.add_argument("--fileName", dest="fileName", type=str, default="role-ca-report.csv", help="Name of your file (\"role-ca-report.csv\" if not specified)")
     parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
     # Parse the command-line arguments
     args = parser.parse_args(sys.argv[1:])
@@ -95,7 +95,9 @@ def main():
         else:
             for key, value in intRoles.items():
                 file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
-        if args.debug and unknownRoles:
+        if args.debug and not unknownRoles:
+            print("No Unknown Roles")
+        else:
             for key, value in unknownRoles.items():
                 file.write("{},{},{},{}\n".format("Unknown", key, value["Creation Date"], value["Last Used"]))
 
