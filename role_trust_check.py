@@ -21,27 +21,19 @@ def getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRo
     else:
         unknownRoles[roleName] = {"Creation Date":createDate,"Last Used":lastUseDate}
 
-def main():
-    # Create an ArgumentParser object
-    parser = argparse.ArgumentParser(description="Use this script to find roles that allow cross-account access")
-    # Create arguments
-    parser.add_argument("accProf", metavar="accProfile", type=str, help="The account profile that you would like to search within")
-    parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account profile with access to Organizations")
-    parser.add_argument("--fileName", dest="fileName", type=str, default="role-ca-report.csv", help="Name of your file (\"role-ca-report.csv\" if not specified)")
-    parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
-    # Parse the command-line arguments
-    args = parser.parse_args(sys.argv[1:])
+def main(accProf, orgProf, fileName, debug):
     # check that the profile is valid by creating a boto3 session
     try:
-        accSession = boto3.Session(profile_name=args.accProf)
-        orgSession = boto3.Session(profile_name=args.orgProf)
+        accSession = boto3.Session(profile_name=accProf)
+        orgSession = boto3.Session(profile_name=orgProf)
         iam = accSession.client("iam")
         sts = accSession.client("sts")
         org = orgSession.client('organizations')
     except:
-        if args.debug:
+        if debug:
             print("Unable to create session.\nCheck the profile.")
         sys.exit(1)
+
     # Set up the paginators
     iamPaginator = iam.get_paginator('list_roles')
     orgPaginator = org.get_paginator('list_accounts')
@@ -54,7 +46,7 @@ def main():
         for account in page["Accounts"]:
             orgAccounts.append(account["Id"])
     # Create a new report file
-    with open(args.fileName, "w") as file:
+    with open(fileName, "w") as file:
         file.write("Type, Role Name, Creation Date, Last Used\n")
     # Set up the dictionaries that contain the roles with cross-account access
     extRoles = {} # for roles with trust to accounts external to the organization
@@ -66,7 +58,7 @@ def main():
         # Iterate through each role
         for role in page["Roles"]:
             # if debug mode is on
-            if args.debug:
+            if debug:
                 # Print role name
                 print(role["RoleName"])
             # Iterate through each assume role policy statement (a role could have more than one)
@@ -84,22 +76,35 @@ def main():
                         for awsPrincipal in awsPrincipals:
                             getRoleInfo(iam, awsPrincipal, role, myAccount, orgAccounts, extRoles, intRoles, unknownRoles)
     # Write the results to the file
-    with open(args.fileName, "a") as file:
-        if args.debug and not extRoles:
+    with open(fileName, "a") as file:
+        if debug and not extRoles:
             print("No External Roles (that allow access to accounts outside the org)")
         else:
             for key, value in extRoles.items():
                 file.write("{},{},{},{}\n".format("External", key, value["Creation Date"], value["Last Used"]))
-        if args.debug and not intRoles:
+        if debug and not intRoles:
             print("No Internal Roles (that allow access to accounts inside the org)")
         else:
             for key, value in intRoles.items():
                 file.write("{},{},{},{}\n".format("Internal", key, value["Creation Date"], value["Last Used"]))
-        if args.debug and not unknownRoles:
+        if debug and not unknownRoles:
             print("No Unknown Roles")
         else:
             for key, value in unknownRoles.items():
                 file.write("{},{},{},{}\n".format("Unknown", key, value["Creation Date"], value["Last Used"]))
 
 if __name__ == "__main__":
-    main()
+    # Create an ArgumentParser object
+    parser = argparse.ArgumentParser(description="Use this script to find roles that allow cross-account access")
+    # Create arguments
+    parser.add_argument("accProf", metavar="accProfile", type=str, help="The account profile that you would like to search within")
+    parser.add_argument("orgProf", metavar="orgProfile", type=str, help="The account profile with access to Organizations")
+    parser.add_argument("--fileName", dest="fileName", type=str, default="role-ca-report.csv", help="Name of your file (\"role-ca-report.csv\" if not specified)")
+    parser.add_argument("--debug", dest="debug", action="store_true", help="Enable debug mode")
+    # Parse the command-line arguments
+    args = parser.parse_args(sys.argv[1:])
+    accProf = args.accProf
+    orgProf = args.orgProf
+    fileName =args.fileName
+    debug = args.debug
+    main(accProf, orgProf, fileName, debug)
